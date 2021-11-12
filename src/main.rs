@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			match message {
 				OwnedMessage::Close(_) => {
 					let _ = sender.send_message(&message);
+					// if it's a close message, send and return
 					return;
 				}
 				_ => (),
@@ -67,11 +68,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			};
 			match message {
 				OwnedMessage::Close(_) => {
+					// process close message
 					let _ = tx_1.send(OwnedMessage::Close(None));
 					return;
 				}
 				OwnedMessage::Ping(data) => {
 					match tx_1.send(OwnedMessage::Pong(data)) {
+						// send pong
 						Ok(()) => (),
 						Err(e) => {
 							println!("Receive Loop: {:?}", e);
@@ -79,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						}
 					}
 				}
-				_ => println!("Receive Loop: {:?}", message),
+				_ => println!("Message Recieved: {:?}", message),
 			}
 		}
 	});

@@ -8,5 +8,5 @@
     "start": "node server.js"
   },
   "author": "Jason Wiemels",
-  "license": "ISC"
+  "license": "MIT"
 }
