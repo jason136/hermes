@@ -1,4 +1,5 @@
 extern crate websocket;
+extern crate reqwest;
 
 use std::io::stdin;
 use std::sync::mpsc::channel;
@@ -7,20 +8,37 @@ use std::thread;
 use websocket::client::ClientBuilder;
 use websocket::{Message, OwnedMessage};
 
-const CONNECTION: &'static str = "ws://[::1]:8080";
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    let body = reqwest::blocking::get("http://[::1]:3000")?
-        .text()?;
-    println!("body = {:?}", body);
-
-    let client = ClientBuilder::new(CONNECTION)
+	loop {
+		println!("Enter ip: ");
+		let mut input = String::new();
+		stdin().read_line(&mut input).unwrap();
+		let ip = input.trim();
+		
+		match reqwest::blocking::get(format!("http://{}:3000/checkin", ip)) {
+			Ok(b) => {
+				if b.text().unwrap() == "server online" {
+					println!("Server connected");
+					break;
+				}
+				else {
+					println!("Server returned unknown response");
+					continue;
+				}
+			}
+			Err(e) => {
+				println!("Server not found {:?}", e);
+				continue;
+			}
+		};
+	}
+	
+    let client = ClientBuilder::new("ws://[::1]:8080")
 		.unwrap()
 		.add_protocol("rust-websocket")
 		.connect_insecure()
 		.unwrap();
-    println!("connected");
 
     let (mut receiver, mut sender) = client.split().unwrap();
 
@@ -91,7 +109,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
 		let trimmed = input.trim();
-
+		if trimmed.is_empty() {
+			continue;
+		}
 		let message = match trimmed {
 			"/close" => {
 				let _ = tx.send(OwnedMessage::Close(None));

@@ -1,9 +1,9 @@
 const Express = require('express');
 const router = Express.Router();
 
-router.get('/', (req, res) => {
+router.get('/checkin', (req, res) => {
 
-    res.send('Hello World... from router!');
+    res.send('server online');
 
 });
 

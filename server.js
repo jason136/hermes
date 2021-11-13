@@ -3,7 +3,7 @@ const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
-rl.setPrompt('message> ');
+rl.setPrompt('');
 
 const WebSocket = require('ws');
 const server = new WebSocket.Server({port: '8080'});
@@ -18,7 +18,6 @@ server.on('connection', socket => {
     });
     
     rl.prompt();
-
     rl.on('line', (line) => {
         if (line) socket.send(line);
         rl.prompt();
@@ -26,9 +25,6 @@ server.on('connection', socket => {
         resolve(42);
     });
 });
-
-
-
 
 const Express = require('express');
 const app = Express();
