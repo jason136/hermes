@@ -2,7 +2,8 @@ extern crate websocket;
 extern crate reqwest;
 
 use std::io::stdin;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc;
 use std::thread;
 use std::fs;
 use std::path;
@@ -45,9 +46,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (mut receiver, mut sender) = client.split().unwrap();
 
-	let (tx, rx) = channel();
-
+	let (tx, rx) = mpsc::channel();
 	let tx_1 = tx.clone();
+
+	enum FilePath {
+		Download(String),
+		Upload(String)
+	}
+
+	let (td, rd): (Sender<FilePath>, Receiver<FilePath>) = mpsc::channel();
 
     let send_loop = thread::spawn(move || {
 		loop {
@@ -99,27 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							"/file" => {
 								println!("File aquire command recieved");
 								fs::create_dir_all("./downloads").expect("failed to create downloads folder");
-								let file = format!("./downloads/{}", &text[6..]);
-								let path = path::Path::new(&file);
-								let display = path.display();
-								let mut file = match fs::File::create(&path) {
-									Ok(file) => file,
-									Err(e) => {
-										println!("Error on file creation {:?}", e);
-										continue;
-									}
-								};
-								let response = match reqwest::blocking::get(&format!("http://{}:3000/download", &ip)) {
-									Ok(data) => data.bytes().unwrap(),
-									Err(e) => {
-										println!("Error on download {:?}", e);
-										continue;
-									}
-								};
-								match file.write_all(&response) {
-									Ok(_) => println!("File written to {:?}", display), 
-									Err(e) => println!("Error on file write {:?}: {:?}", display, e)
-								}
+								let file = FilePath::Download(String::from(&text[6..]));
+								let _ = td.send(file);
 							}
 							_ => println!("Message Recieved: {}", text),
 						}
@@ -129,6 +117,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					}
 				}
 				_ => println!("Unrecognized message recieved, {:?}", message),
+			}
+		}
+	});
+
+	let transfer_loop = thread::spawn(move || {
+		loop {
+			let message = match rd.recv() {
+				Ok(m) => m,
+				Err(e) => {
+					println!("Transfer Loop: {:?}", e);
+					return;
+				}
+			};
+			match message {
+				FilePath::Download(filename) => {
+					let file = format!("./downloads/{}", filename);
+					let path = path::Path::new(&file);
+					let display = path.display();
+					let mut file = match fs::File::create(&path) {
+						Ok(file) => file,
+						Err(e) => {
+							println!("Error on file creation {:?}", e);
+							continue;
+						}
+					};
+					let response = match reqwest::blocking::get(&format!("http://{}:3000/download", &ip)) {
+						Ok(data) => data.bytes().unwrap(),
+						Err(e) => {
+							println!("Error on download {:?}", e);
+							continue;
+						}
+					};
+					match file.write_all(&response) {
+						Ok(_) => println!("File written to {:?}", display), 
+						Err(e) => println!("Error on file write {:?}: {:?}", display, e)
+					}
+				}
+				FilePath::Upload(filename) => drop(filename),
 			}
 		}
 	});
@@ -159,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let _ = send_loop.join();
 	let _ = receive_loop.join();
+	let _ = transfer_loop.join();
 
 	println!("exited");
     
