@@ -4,18 +4,21 @@ extern crate reqwest;
 use std::io::stdin;
 use std::sync::mpsc::channel;
 use std::thread;
+use std::fs;
+use std::path;
+use std::io::prelude::*;
 
 use websocket::client::ClientBuilder;
 use websocket::{Message, OwnedMessage};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
+	let mut ip: String;
 	loop {
 		println!("Enter ip: ");
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
-		let ip = input.trim();
-		
+		ip = String::from(input.trim());
 		match reqwest::blocking::get(format!("http://{}:3000/checkin", ip)) {
 			Ok(b) => {
 				if b.text().unwrap() == "server online" {
@@ -33,8 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		};
 	}
-	
-    let client = ClientBuilder::new("ws://[::1]:8080")
+
+    let client = ClientBuilder::new(&format!("ws://{}:8080", &ip))
 		.unwrap()
 		.add_protocol("rust-websocket")
 		.connect_insecure()
@@ -90,17 +93,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					let _ = tx_1.send(OwnedMessage::Close(None));
 					return;
 				}
-				OwnedMessage::Ping(data) => {
-					match tx_1.send(OwnedMessage::Pong(data)) {
-						// send pong
-						Ok(()) => (),
-						Err(e) => {
-							println!("Receive Loop: {:?}", e);
-							return;
+				OwnedMessage::Text(text) => {
+					if text.len() > 6 {
+						match &text[0..5] {
+							"/file" => {
+								println!("File aquire command recieved");
+								fs::create_dir_all("./downloads").expect("failed to create downloads folder");
+								let file = format!("./downloads/{}", &text[6..]);
+								let path = path::Path::new(&file);
+								let display = path.display();
+								let mut file = match fs::File::create(&path) {
+									Ok(file) => file,
+									Err(e) => {
+										println!("Error on file creation {:?}", e);
+										continue;
+									}
+								};
+								let response = match reqwest::blocking::get(&format!("http://{}:3000/download", &ip)) {
+									Ok(data) => data.bytes().unwrap(),
+									Err(e) => {
+										println!("Error on download {:?}", e);
+										continue;
+									}
+								};
+								match file.write_all(&response) {
+									Ok(_) => println!("File written to {:?}", display), 
+									Err(e) => println!("Error on file write {:?}: {:?}", display, e)
+								}
+							}
+							_ => println!("Message Recieved: {}", text),
 						}
 					}
+					else {
+						println!("Message Recieved: {}", text);
+					}
 				}
-				_ => println!("Message Recieved: {:?}", message),
+				_ => println!("Unrecognized message recieved, {:?}", message),
 			}
 		}
 	});
@@ -117,7 +145,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let _ = tx.send(OwnedMessage::Close(None));
 				break;
 			}
-			"/ping" => OwnedMessage::Ping(b"PING".to_vec()),
 			_ => OwnedMessage::Text(trimmed.to_string()),
 		};
 

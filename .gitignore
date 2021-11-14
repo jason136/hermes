@@ -8,3 +8,9 @@
 /.vscode/
 
 Cargo.lock
+
+# Files and directories used during testing
+/downloads/
+*.jpg
+*.pdf
+*.zip
