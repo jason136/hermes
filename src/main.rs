@@ -15,6 +15,7 @@ use websocket::{Message, OwnedMessage};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut ip: String;
+	let port: String;
 	loop {
 		println!("Enter ip: ");
 		let mut input = String::new();
@@ -22,8 +23,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		ip = String::from(input.trim());
 		match reqwest::blocking::get(format!("http://{}:3000/checkin", ip)) {
 			Ok(b) => {
-				if b.text().unwrap() == "server online" {
+				let response = String::from(b.text().unwrap());
+				if &response[0..13] == "server online" {
 					println!("Server connected");
+					port = String::from(&response[14..18]);
 					break;
 				}
 				else {
@@ -37,8 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		};
 	}
-
-    let client = ClientBuilder::new(&format!("ws://{}:8080", &ip))
+	println!("{}", port);
+    let client = ClientBuilder::new(&format!("ws://{}:{}", &ip, &port))
 		.unwrap()
 		.add_protocol("rust-websocket")
 		.connect_insecure()
@@ -104,9 +107,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					if text.len() > 6 {
 						match &text[0..5] {
 							"/file" => {
-								println!("File aquire command recieved");
+								println!("File download command recieved");
 								fs::create_dir_all("./downloads").expect("failed to create downloads folder");
 								let file = FilePath::Download(String::from(&text[6..]));
+								let _ = td.send(file);
+							}
+							"/expt" => {
+								println!("got from server: {:?}", &text[6..]);
+								let file = FilePath::Upload(String::from(&text[6..]));
 								let _ = td.send(file);
 							}
 							_ => println!("Message Recieved: {}", text),
@@ -132,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			};
 			match message {
 				FilePath::Download(filename) => {
-					let file = format!("./downloads/{}", filename);
+					let file = format!("./downloads/{}", &filename);
 					let path = path::Path::new(&file);
 					let display = path.display();
 					let mut file = match fs::File::create(&path) {
@@ -154,7 +162,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						Err(e) => println!("Error on file write {:?}: {:?}", display, e)
 					}
 				}
-				FilePath::Upload(filename) => drop(filename),
+				FilePath::Upload(filename) => {
+					println!("{}", &filename);
+					let mut file = match fs::File::open(&filename) {
+						Ok(f) => f,
+						Err(e) => {
+							println!("Error reading file {:?}", e);
+							continue;
+						}
+					};
+					let mut buffer = Vec::new();
+					file.read_to_end(&mut buffer).expect("error writing to buffer");
+					
+					let client = reqwest::blocking::Client::new();
+					match client.post(&format!("http://{}:3000/upload", &ip)).body(buffer).send() {
+						Ok(_) => println!("File uploaded: {:?}", &filename),
+						Err(e) => println!("Error uploading file {:?}", e)
+					}
+				}
 			}
 		}
 	});
