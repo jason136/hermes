@@ -12,7 +12,7 @@ server.on('connection', socket => {
     console.log('Client is connected');
 
     socket.on('message', message => {
-        console.log('Message Recieved: ', message.toString());
+        console.log('Message Recieved:', message.toString());
         //socket.send(`Roger that! ${message}`);
         rl.prompt();
     });
@@ -23,7 +23,22 @@ server.on('connection', socket => {
     
     rl.prompt();
     rl.on('line', (line) => {
-        if (line) socket.send(line);
+        if (line.trim()) {
+            switch (line.substring(0, 5)) {
+                case '/file':
+                    fullPath = line.substring(6).replaceAll('\"', '').replaceAll('\'', '').replaceAll('\\', '/')
+                    app.get('/download', (req, res) => {
+                        res.download(fullPath);
+                        console.log('file sent ', fullPath)
+                    });
+                    var filename = fullPath.split('/').pop()
+                    line = ('/file ' + filename);
+                    console.log(line);
+                    break;
+                    
+            }
+            socket.send(line);
+        }
         rl.prompt();
     }).on('close', () => {
         resolve(42);
@@ -39,7 +54,7 @@ app.get('/checkin', (req, res) => {
 
 });
 
-app.get('/download', (req, res) => res.download('./hayasaka.jpg'));
+
 
 app.post('/', (req, res) => {
 
