@@ -12,6 +12,10 @@ const rl = readline.createInterface({
 });
 rl.setPrompt('');
 
+function httpEncode(name) {
+    return name.replaceAll(' ', '%20').replaceAll('(', '%28').replaceAll(')', '%29')
+}
+
 function websocketServer(port) {
     this.port = port, 
     this.server = new WebSocket.Server({port: port});
@@ -26,7 +30,7 @@ function websocketServer(port) {
                 console.log(filepath)
                 this.buffer = Buffer.from('');
     
-                app.post('/upload/' + this.port + '/' + filename, (req, res) => {
+                app.post('/upload/' + this.port + '/' + httpEncode(filename), (req, res) => {
                     var newpath = __dirname + '\\uploads\\' + filename;
                     req.on('data', (data) => {
                         this.buffer = Buffer.concat([this.buffer, data]);
@@ -71,7 +75,7 @@ function websocketServer(port) {
                             var filename = filepath.split('/').pop();
                             console.log(filepath);
                             files.push(filepath);
-                            app.get('/download/' + this.port + '/' + filename, (req, res) => {
+                            app.get('/download/' + this.port + '/' + httpEncode(filename), (req, res) => {
                                 let file = files.shift();
                                 console.log(files.length);
                                 res.download(file);

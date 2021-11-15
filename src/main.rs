@@ -12,6 +12,10 @@ use std::io::prelude::*;
 use websocket::client::ClientBuilder;
 use websocket::{Message, OwnedMessage};
 
+fn http_encode(name: String) -> String {
+	return name.replace(' ', "%20").replace('(', "%28").replace(')', "%29")
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut ip: String;
@@ -150,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							continue;
 						}
 					};
-					let response = match reqwest::blocking::get(&format!("http://{}:3000/download/{}/{}", &ip, &port, &filename)) {
+					let response = match reqwest::blocking::get(&format!("http://{}:3000/download/{}/{}", &ip, &port, &http_encode(filename))) {
 						Ok(data) => data.bytes().unwrap(),
 						Err(e) => {
 							println!("Error on download {:?}", e);
@@ -176,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					
 					let filename = filepath.split("/").last().unwrap();
 					let client = reqwest::blocking::Client::new();
-					match client.post(&format!("http://{}:3000/upload/{}/{}", &ip, &port, &filename)).body(buffer).send() {
+					match client.post(&format!("http://{}:3000/upload/{}/{}", &ip, &port, &http_encode(filename.to_string()))).body(buffer).send() {
 						Ok(_) => println!("File uploaded: {:?}", &filepath),
 						Err(e) => println!("Error uploading file {:?}", e)
 					}
