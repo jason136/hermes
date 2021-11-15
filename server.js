@@ -27,26 +27,17 @@ function websocketServer(port) {
                 this.buffer = Buffer.from('');
     
                 app.post('/upload/' + this.port + '/' + filename, (req, res) => {
-                    console.log('post request recieved!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
                     var newpath = __dirname + '\\uploads\\' + filename;
-                    console.log(newpath);
-                    
                     req.on('data', (data) => {
                         this.buffer = Buffer.concat([this.buffer, data]);
                     });
     
-                    console.log('body: ' + this.body);
                     req.on('end', () => {
                         fs.writeFile(newpath, this.buffer, "binary", () => {
                             res.end();
-                            console.log(this.buffer);
                             console.log('File written to ' + newpath);
                         });
                     });
-
-                    //req.pipe(fs.createWriteStream(filepath))
-                    res.end();
-                    console.log('File written to ' + newpath);
                 });
                 
                 console.log('File upload command recieved, server is ready');
@@ -67,20 +58,34 @@ function websocketServer(port) {
             if (line.trim()) {
                 switch (line.substring(0, 5)) {
                     case '/file':
-                        var filepath = line.substring(6).replaceAll('\"', '').replaceAll('\'', '').replaceAll('\\', '/');
-                        var filename = filepath.split('/').pop();
-                        app.get('/download/' + this.port + '/' + filename, (req, res) => {
-                            res.download(filepath);
-                            console.log('file sent ', filepath);
-                        });
-    
-                        var filename = filepath.split('/').pop();
-                        line = ('/file ' + filename);
-                        console.log(line);
+                        var seperated = line.substring(6).replaceAll('\'', '\"').split('\"');
+                        var filepaths = [];
+                        for (let x = 0; x < seperated.length; x++) {
+                            if (seperated[x].trim() != '') {
+                                filepaths.push(seperated[x]);
+                            }
+                        }
+                        var files = [];
+                        for (let x = 0; x < filepaths.length; x++) {
+                            var filepath = filepaths[x].replaceAll('\\', '/');
+                            var filename = filepath.split('/').pop();
+                            console.log(filepath);
+                            files.push(filepath);
+                            app.get('/download/' + this.port + '/' + filename, (req, res) => {
+                                let file = files.shift();
+                                console.log(files.length);
+                                res.download(file);
+                                console.log('file sent ', file.split('/').pop());
+                            });
+
+                            var filename = filepath.split('/').pop();
+                            socket.send('/file ' + filename);
+                        }
                         break;
-                        
+                    default:
+                        socket.send(line);
+                        break;
                 }
-                socket.send(line);
             }
             rl.prompt();
         })
