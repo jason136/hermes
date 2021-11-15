@@ -140,8 +140,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			};
 			match message {
 				FilePath::Download(filename) => {
-					let file = format!("./downloads/{}", &filename);
-					let path = path::Path::new(&file);
+					let filepath = format!("./downloads/{}", &filename);
+					let path = path::Path::new(&filepath);
 					let display = path.display();
 					let mut file = match fs::File::create(&path) {
 						Ok(file) => file,
@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							continue;
 						}
 					};
-					let response = match reqwest::blocking::get(&format!("http://{}:3000/download", &ip)) {
+					let response = match reqwest::blocking::get(&format!("http://{}:3000/download/{}/{}", &ip, &port, &filename)) {
 						Ok(data) => data.bytes().unwrap(),
 						Err(e) => {
 							println!("Error on download {:?}", e);
@@ -162,9 +162,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						Err(e) => println!("Error on file write {:?}: {:?}", display, e)
 					}
 				}
-				FilePath::Upload(filename) => {
-					println!("{}", &filename);
-					let mut file = match fs::File::open(&filename) {
+				FilePath::Upload(filepath) => {
+					println!("{}", &filepath);
+					let mut file = match fs::File::open(&filepath) {
 						Ok(f) => f,
 						Err(e) => {
 							println!("Error reading file {:?}", e);
@@ -174,9 +174,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					let mut buffer = Vec::new();
 					file.read_to_end(&mut buffer).expect("error writing to buffer");
 					
+					let filename = filepath.split("/").last().unwrap();
 					let client = reqwest::blocking::Client::new();
-					match client.post(&format!("http://{}:3000/upload", &ip)).body(buffer).send() {
-						Ok(_) => println!("File uploaded: {:?}", &filename),
+					match client.post(&format!("http://{}:3000/upload/{}/{}", &ip, &port, &filename)).body(buffer).send() {
+						Ok(_) => println!("File uploaded: {:?}", &filepath),
 						Err(e) => println!("Error uploading file {:?}", e)
 					}
 				}
