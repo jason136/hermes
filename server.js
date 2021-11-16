@@ -27,23 +27,23 @@ function websocketServer(port) {
                 !fs.existsSync(`./uploads/`) && fs.mkdirSync(`./uploads/`, { recursive: true });
                 var filepath = message.toString().substring(6).replaceAll('\"', '').replaceAll('\'', '').replaceAll('\\', '/');
                 var filename = filepath.split('/').pop();
-                console.log(filepath)
-                this.buffer = Buffer.from('');
-    
+
                 app.post('/upload/' + this.port + '/' + httpEncode(filename), (req, res) => {
                     var newpath = __dirname + '\\uploads\\' + filename;
+                    buffer = Buffer.from('');
+
                     req.on('data', (data) => {
-                        this.buffer = Buffer.concat([this.buffer, data]);
+                        buffer = Buffer.concat([buffer, data]);
                     });
-    
+
                     req.on('end', () => {
-                        fs.writeFile(newpath, this.buffer, "binary", () => {
+                        fs.writeFile(newpath, buffer, "binary", () => {
                             res.end();
                             console.log('File written to ' + newpath);
                         });
                     });
                 });
-                
+
                 console.log('File upload command recieved, server is ready');
                 socket.send('/expt ' + filepath);
             }
@@ -70,15 +70,14 @@ function websocketServer(port) {
                             }
                         }
                         var files = {};
-                        console.log('made 1')
+                        
                         for (let x = 0; x < filepaths.length; x++) {
                             let filename = filepaths[x].split('/').pop();
                             files[filename] = filepaths[x];
                         }
-                        console.log('made 2')
+                        
                         for (let x = 0; x < filepaths.length; x++) {
                             let filename = filepaths[x].split('/').pop();
-                            console.log(files);
                             app.get('/download/' + this.port + '/' + httpEncode(filename), (req, res) => {
                                 res.download(files[filename]);
                                 console.log('file sent ', filename);

@@ -29,8 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			Ok(b) => {
 				let response = String::from(b.text().unwrap());
 				if &response[0..13] == "server online" {
-					println!("Server connected");
 					port = String::from(&response[14..18]);
+					println!("Server connected on port: {}", &port);
 					break;
 				}
 				else {
@@ -44,8 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		};
 	}
-	println!("{}", port);
-    let client = ClientBuilder::new(&format!("ws://{}:{}", &ip, &port))
+
+	let client = ClientBuilder::new(&format!("ws://{}:{}", &ip, &port))
 		.unwrap()
 		.add_protocol("rust-websocket")
 		.connect_insecure()
@@ -72,20 +72,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					return;
 				}
 			};
-			match message {
-				OwnedMessage::Close(_) => {
-					let _ = sender.send_message(&message);
-					// if it's a close message, send and return
-					return;
+			if let OwnedMessage::Text(text) = message {
+				if text.len() > 6 {
+					let text = String::from(&text);
+					match &text[0..6] {
+						"/file " => {
+							for filename in text[6..].split("\"") {
+								if filename.trim() != "" {
+									sender.send_message(&OwnedMessage::Text(format!("/file {}", filename))).expect("the bad");
+								}
+							}
+							continue;
+							// let filepath = String::from(&text[6..]);
+							// let filename = String::from(filepath.split("/").last().unwrap());
+						}
+						"/close" => return,
+						_ => ()
+					}
 				}
-				_ => (),
-			}
-			match sender.send_message(&message) {
-				Ok(()) => (),
-				Err(e) => {
-					println!("Send Loop: {:?}", e);
-					let _ = sender.send_message(&Message::close());
-					return;
+				match sender.send_message(&OwnedMessage::Text(String::from(&text))) {
+					Ok(()) => (),
+					Err(e) => {
+						println!("Send Loop: {:?}", e);
+						let _ = sender.send_message(&Message::close());
+						return;
+					}
 				}
 			}
 		}
@@ -117,7 +128,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								let _ = td.send(file);
 							}
 							"/expt" => {
-								println!("got from server: {:?}", &text[6..]);
+								// let filename = &text[6..];
+								// println!("got from server: {:?}", filename);
+								// let file = FilePath::Upload(String::from(paths.get(filename).unwrap()));
+								// let _ = td.send(file);
 								let file = FilePath::Upload(String::from(&text[6..]));
 								let _ = td.send(file);
 							}
@@ -167,7 +181,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					}
 				}
 				FilePath::Upload(filepath) => {
-					println!("{}", &filepath);
 					let mut file = match fs::File::open(&filepath) {
 						Ok(f) => f,
 						Err(e) => {
@@ -180,9 +193,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					
 					let filename = filepath.split("/").last().unwrap();
 					let client = reqwest::blocking::Client::new();
-					match client.post(&format!("http://{}:3000/upload/{}/{}", &ip, &port, &http_encode(filename.to_string()))).body(buffer).send() {
+					match client.post(&format!("http://{}:3000/upload/{}/{}", &ip, &port, &http_encode(String::from(filename)))).body(buffer).send() {
 						Ok(_) => println!("File uploaded: {:?}", &filepath),
-						Err(e) => println!("Error uploading file {:?}", e)
+						Err(e) => println!("Error uploading file: {:?} {:?}", &filepath, e)
 					}
 				}
 			}
