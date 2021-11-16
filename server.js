@@ -20,7 +20,7 @@ function websocketServer(port) {
     this.port = port, 
     this.server = new WebSocket.Server({port: port});
     this.server.on('connection', socket => {
-        console.log('Client is connected');
+        console.log('Client is connected on port ' + this.port);
     
         socket.on('message', message => {
             if (message.toString().substring(0, 5) == '/file') {
@@ -66,23 +66,23 @@ function websocketServer(port) {
                         var filepaths = [];
                         for (let x = 0; x < seperated.length; x++) {
                             if (seperated[x].trim() != '') {
-                                filepaths.push(seperated[x]);
+                                filepaths.push(seperated[x].replaceAll('\\', '/'));
                             }
                         }
-                        var files = [];
+                        var files = {};
+                        console.log('made 1')
                         for (let x = 0; x < filepaths.length; x++) {
-                            var filepath = filepaths[x].replaceAll('\\', '/');
-                            var filename = filepath.split('/').pop();
-                            console.log(filepath);
-                            files.push(filepath);
+                            let filename = filepaths[x].split('/').pop();
+                            files[filename] = filepaths[x];
+                        }
+                        console.log('made 2')
+                        for (let x = 0; x < filepaths.length; x++) {
+                            let filename = filepaths[x].split('/').pop();
+                            console.log(files);
                             app.get('/download/' + this.port + '/' + httpEncode(filename), (req, res) => {
-                                let file = files.shift();
-                                console.log(files.length);
-                                res.download(file);
-                                console.log('file sent ', file.split('/').pop());
+                                res.download(files[filename]);
+                                console.log('file sent ', filename);
                             });
-
-                            var filename = filepath.split('/').pop();
                             socket.send('/file ' + filename);
                         }
                         break;
