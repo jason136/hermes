@@ -4,6 +4,7 @@ extern crate reqwest;
 use std::io::stdin;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::fs;
 use std::path;
@@ -20,6 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut ip: String;
 	let port: String;
+
 	loop {
 		println!("Enter ip: ");
 		let mut input = String::new();
@@ -63,44 +65,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let (td, rd): (Sender<FilePath>, Receiver<FilePath>) = mpsc::channel();
 
-    let send_loop = thread::spawn(move || {
-		loop {
-			let message = match rx.recv() {
-				Ok(m) => m,
-				Err(e) => {
-					println!("Send Loop: {:?}", e);
-					return;
-				}
-			};
-			if let OwnedMessage::Text(text) = message {
-				if text.len() > 6 {
-					let text = String::from(&text);
-					match &text[0..6] {
-						"/file " => {
-							for filename in text[6..].split("\"") {
-								if filename.trim() != "" {
-									sender.send_message(&OwnedMessage::Text(format!("/file {}", filename))).expect("the bad");
-								}
-							}
-							continue;
-							// let filepath = String::from(&text[6..]);
-							// let filename = String::from(filepath.split("/").last().unwrap());
-						}
-						"/close" => return,
-						_ => ()
-					}
-				}
-				match sender.send_message(&OwnedMessage::Text(String::from(&text))) {
-					Ok(()) => (),
+	let arc = Arc::new(Mutex::new(String::from("./downloads/")));
+
+	let mut threads = vec![];
+
+	{
+		let arc = arc.clone();
+		let send_loop = thread::spawn(move || {
+			loop {
+				let message = match rx.recv() {
+					Ok(m) => m,
 					Err(e) => {
 						println!("Send Loop: {:?}", e);
-						let _ = sender.send_message(&Message::close());
 						return;
+					}
+				};
+				if let OwnedMessage::Text(text) = message {
+					if text.len() > 8 {
+						let text = String::from(&text);
+						match &text[0..6] {
+							"/file " => {
+								for filename in text[6..].split("\"") {
+									if filename.trim() != "" {
+										sender.send_message(&OwnedMessage::Text(format!("/file {}", filename))).expect("the bad");
+									}
+								}
+								continue;
+								// let filepath = String::from(&text[6..]);
+								// let filename = String::from(filepath.split("/").last().unwrap());
+							}
+							"/direc" => {
+								if path::Path::new(&text[6..].replace("\"", "").trim()).exists() && std::fs::metadata(".").unwrap().is_dir() {
+									let mut new_direc = arc.lock().unwrap();
+									*new_direc = String::from(text[6..].replace("\"", "").trim());
+									println!("Download directory changed to {:?}", new_direc);
+								}
+								else {
+									println!("Directory is invalid");
+								}
+								continue;
+							}
+							_ => ()
+						}
+					}
+					match sender.send_message(&OwnedMessage::Text(String::from(&text))) {
+						Ok(()) => (),
+						Err(e) => {
+							println!("Send Loop: {:?}", e);
+							let _ = sender.send_message(&Message::close());
+							return;
+						}
 					}
 				}
 			}
-		}
-	});
+		});	
+		threads.push(send_loop);
+	};
 
 	let receive_loop = thread::spawn(move || {
 		for message in receiver.incoming_messages() {
@@ -123,7 +143,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						match &text[0..5] {
 							"/file" => {
 								println!("File download command recieved");
-								fs::create_dir_all("./downloads").expect("failed to create downloads folder");
 								let file = FilePath::Download(String::from(&text[6..]));
 								let _ = td.send(file);
 							}
@@ -146,6 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 	});
+	threads.push(receive_loop);
 
 	let transfer_loop = thread::spawn(move || {
 		loop {
@@ -158,7 +178,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			};
 			match message {
 				FilePath::Download(filename) => {
-					let filepath = format!("./downloads/{}", &filename);
+					let new_direc = arc.lock().unwrap();
+					if *new_direc == "./downloads/" {
+						fs::create_dir_all("./downloads").expect("failed to create downloads folder");
+					}
+					let filepath = format!("{}\\{}", &new_direc, &filename.replace("\"", ""));
 					let path = path::Path::new(&filepath);
 					let display = path.display();
 					let mut file = match fs::File::create(&path) {
@@ -201,6 +225,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 	});
+	threads.push(transfer_loop);
 
 	loop {
 		let mut input = String::new();
@@ -209,13 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		if trimmed.is_empty() {
 			continue;
 		}
-		let message = match trimmed {
-			"/close" => {
-				let _ = tx.send(OwnedMessage::Close(None));
-				break;
-			}
-			_ => OwnedMessage::Text(trimmed.to_string()),
-		};
+		let message = OwnedMessage::Text(trimmed.to_string());
 
 		match tx.send(message) {
 			Ok(()) => (),
@@ -226,9 +245,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	}
 
-	let _ = send_loop.join();
-	let _ = receive_loop.join();
-	let _ = transfer_loop.join();
+	for thread in threads {
+		thread.join().expect("error joining threads");
+	}
 
 	println!("exited");
     
