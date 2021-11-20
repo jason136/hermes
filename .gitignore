@@ -11,6 +11,7 @@ Cargo.lock
 
 # Files and directories used during testing
 /downloads/
+/uploads/
 *.jpg
 *.pdf
 *.zip

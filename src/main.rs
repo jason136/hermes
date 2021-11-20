@@ -182,7 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					if *new_direc == "./downloads/" {
 						fs::create_dir_all("./downloads").expect("failed to create downloads folder");
 					}
-					let filepath = format!("{}\\{}", &new_direc, &filename.replace("\"", ""));
+					let filepath = format!("{}{}", &new_direc, &filename.replace("\"", ""));
 					let path = path::Path::new(&filepath);
 					let display = path.display();
 					let mut file = match fs::File::create(&path) {

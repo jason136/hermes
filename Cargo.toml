@@ -1,5 +1,13 @@
+cargo-features = ["strip"]
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
+
 [package]
-name = "websocket-comms"
+name = "hermes"
 version = "0.1.0"
 edition = "2021"
 
