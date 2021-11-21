@@ -20,7 +20,7 @@ fn http_encode(name: String) -> String {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut ip: String;
-	let port: String;
+	let mut port: String;
 
 	loop {
 		println!("Enter ip: ");
@@ -32,6 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let response = String::from(b.text().unwrap());
 				if &response[0..13] == "server online" {
 					port = String::from(&response[14..18]);
+					if &port == "full" {
+						println!("Server currently has no open ports");
+						continue;
+					}
 					println!("Server connected on port: {}", &port);
 					break;
 				}
@@ -80,11 +84,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						return;
 					}
 				};
+				match message {
+					OwnedMessage::Close(_) => {
+						let _ = sender.send_message(&message);
+						std::process::exit(0);
+					}
+					_ => ()
+				}
 				if let OwnedMessage::Text(text) = message {
 					if text.len() > 8 {
 						let text = String::from(&text);
-						match &text[0..6] {
-							"/file " => {
+						match &text[0..5] {
+							"/file" => {
 								for filename in text[6..].split("\"") {
 									if filename.trim() != "" {
 										sender.send_message(&OwnedMessage::Text(format!("/file {}", filename))).expect("the bad");
@@ -94,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								// let filepath = String::from(&text[6..]);
 								// let filename = String::from(filepath.split("/").last().unwrap());
 							}
-							"/direc" => {
+							"/dldr" => {
 								if path::Path::new(&text[6..].replace("\"", "").trim()).exists() && std::fs::metadata(".").unwrap().is_dir() {
 									let mut new_direc = arc.lock().unwrap();
 									*new_direc = String::from(text[6..].replace("\"", "").trim());
@@ -126,18 +137,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		for message in receiver.incoming_messages() {
 			let message = match message {
 				Ok(m) => m,
-				Err(e) => {
-					println!("Receive Loop: {:?}", e);
+				Err(_) => {
+					println!("Server disconnected");
 					let _ = tx_1.send(OwnedMessage::Close(None));
 					return;
 				}
 			};
 			match message {
-				OwnedMessage::Close(_) => {
-					// process close message
-					let _ = tx_1.send(OwnedMessage::Close(None));
-					return;
-				}
 				OwnedMessage::Text(text) => {
 					if text.len() > 6 {
 						match &text[0..5] {
@@ -161,6 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						println!("Message Recieved: {}", text);
 					}
 				}
+				OwnedMessage::Close(_) => tx_1.send(OwnedMessage::Close(None)).expect("Error on reciprocate shutdown"),
 				_ => println!("Unrecognized message recieved, {:?}", message),
 			}
 		}
@@ -171,10 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		loop {
 			let message = match rd.recv() {
 				Ok(m) => m,
-				Err(e) => {
-					println!("Transfer Loop: {:?}", e);
-					return;
-				}
+				Err(_) => return
 			};
 			match message {
 				FilePath::Download(filename) => {
@@ -182,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					if *new_direc == "./downloads/" {
 						fs::create_dir_all("./downloads").expect("failed to create downloads folder");
 					}
-					let filepath = format!("{}{}", &new_direc, &filename.replace("\"", ""));
+					let filepath = format!("{}/{}", &new_direc, &filename.replace("\"", ""));
 					let path = path::Path::new(&filepath);
 					let display = path.display();
 					let mut file = match fs::File::create(&path) {
@@ -227,23 +231,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	});
 	threads.push(transfer_loop);
 
-	loop {
-		let mut input = String::new();
-		stdin().read_line(&mut input).unwrap();
-		let trimmed = input.trim();
-		if trimmed.is_empty() {
-			continue;
-		}
-		let message = OwnedMessage::Text(trimmed.to_string());
-
-		match tx.send(message) {
-			Ok(()) => (),
-			Err(e) => {
-				println!("Main Loop: {:?}", e);
-				break;
+	let main_loop = thread::spawn(move || {
+		loop {
+			let mut input = String::new();
+			stdin().read_line(&mut input).unwrap();
+			let trimmed = input.trim();
+			if trimmed.is_empty() {
+				continue;
+			}
+			match trimmed {
+				"/close" => {
+					println!("Closing connection");
+					tx.send(OwnedMessage::Close(None)).expect("Error on shutdown command");
+					return;
+				}
+				_ => ()
+			}
+			let message = OwnedMessage::Text(trimmed.to_string());
+			match tx.send(message) {
+				Ok(()) => (),
+				Err(e) => {
+					println!("Error adding message to send channel {:?}", e);
+					continue;
+				}
 			}
 		}
-	}
+	});
+	threads.push(main_loop);
 
 	for thread in threads {
 		thread.join().expect("error joining threads");

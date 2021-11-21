@@ -10,13 +10,12 @@ function httpEncode(name) {
     return name.replaceAll(' ', '%20').replaceAll('(', '%28').replaceAll(')', '%29')
 }
 
-let rl = readline.createInterface({
+const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
 rl.setPrompt('');
 
-var ports = ['8080', '8080'];
 var servers = [];
 var names = [];
 
@@ -30,7 +29,7 @@ class websocketServer {
         this.directory = './uploads/';
         this.server.on('connection', socket => {
             console.log('Client is connected on port ' + this.port);
-            if (names.length = 1) select();
+            if (names.length == 1 || selecting) select();
             socket.on('message', message => {
                 if (message.toString().substring(0, 5) == '/file' && message.toString().trim().length > 8) {
                     if (this.directory == './uploads/') !fs.existsSync('./uploads/') && fs.mkdirSync('./uploads/', { recursive: true });
@@ -57,19 +56,21 @@ class websocketServer {
                     this.sendOutput('File upload command recieved, server is ready');
                     socket.send('/expt ' + filepath);
                 }
-                else {
-                    this.sendOutput('Message Recieved: ' + message.toString());
-                }
+                else this.sendOutput('Message Recieved: ' + message.toString());
             });
 
             socket.on('close', socket => {
-                this.sendOutput('Client disconnected');
+                console.log(`Client "${this.name}" disconnected`);
+                let index = names.indexOf(this.name);
+                names.splice(index, 1);
+                servers.splice(index, 1);
+                if (selecting || servers.length == 0) select();
             });
 
             rl.on('line', (line) => {
                 if (line.trim() && this.active) {
-                    switch (line.substring(0, 6)) {
-                        case '/file ':
+                    switch (line.substring(0, 5)) {
+                        case '/file':
                             var seperated = line.substring(6).replaceAll('\'', '\"').split('\"');
                             var files = {};
                             for (let x = 0; x < seperated.length; x++) {
@@ -84,7 +85,7 @@ class websocketServer {
                                 }
                             }
                             break;
-                        case '/direc':
+                        case '/dldr':
                             if (fs.existsSync(line.substring(6).replaceAll('"', '').trim())) {
                                 fs.access(line.substring(6).replaceAll('"', '').trim(), (error) => {
                                     if (error) {
@@ -96,18 +97,19 @@ class websocketServer {
                                     }
                                 });
                             }
-                            else {
-                                this.sendOutput('Directory is invalid');
-                            }
+                            else this.sendOutput('Directory is invalid');
                             break;
-                        case '/name ':
+                        case '/name':
                             names[names.indexOf(this.name)] = line.substring(6);
                             this.name = line.substring(6);
                             this.sendOutput(`Client name changed to ${this.name}`);
                             break;
-                        case '/exit ':
+                        case '/exit':
                             this.active = false;
                             select();
+                            break;
+                        case '/clos':
+                            socket.close();
                             break;
                         default:
                             socket.send(line);
@@ -119,11 +121,9 @@ class websocketServer {
     }
     activate() {
         console.clear();
-        this.active = true;
-
         for (var x = 0; x < this.messageLog.length; x++) console.log(this.messageLog[x]);
-
         this.messageLog = [];
+        this.active = true;
     }
     sendOutput(input) {
         if (this.active) console.log(input);
@@ -131,11 +131,15 @@ class websocketServer {
     }
 }
 
+var selecting;
+
 function select() {
-
     console.clear();
-    var limiter = false;
-
+    selecting = true;
+    
+    console.log('Listening on port 3000');
+    console.log(`Ports available for websockets: ${ports}\n`);
+    if (names.length == 0) return;
     console.log('Connected clients:\n------------------------------');
     for (var x = 0; x < names.length; x++) {
         console.log(`${x + 1} - ${names[x]}`)
@@ -144,26 +148,26 @@ function select() {
     rl.prompt();
     
     rl.on('line', function handler(line) {
-        if (limiter) return;
-        else limiter = true;
-        console.log('rl shenanegans')
+        if (!selecting) return;
         if (line > 0 && line <= names.length) {
             servers[line - 1].activate();
-            delete rl;
+            selecting = false;
             return;
         }
+        else select();
     });
 }
 
 app.get('/checkin', (req, res) => {
-
     let port = ports.shift();
-    servers.push(new websocketServer(port));
-    names.push('client on ' + port);
-    res.send('server online ' + port);
-
+    if (port) {
+        names.push('client on ' + port);
+        res.send('server online ' + port);
+        servers.push(new websocketServer(port));
+    }
+    else res.send('server online ' + 'full');
 });
 
+var ports = ['8080', '8081', '8082'];
 app.listen(3000);
-console.log('Listening on port 3000')
-console.log(`Ports available for websockets: ${ports}`)
+select();
