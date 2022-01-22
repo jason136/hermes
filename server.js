@@ -26,7 +26,7 @@ class websocketServer {
         this.messageLog = [];
         this.server = new WebSocket.Server({ port: port });
         this.directory = './uploads/';
-        this.server.on('connection', socket => {
+        this.server.on('connection', (socket) => {
             console.log('Client is connected on port ' + this.port);
             if (names.length == 1 || selecting) select();
             socket.on('message', message => {
@@ -47,7 +47,7 @@ class websocketServer {
                         req.on('end', () => {
                             fs.writeFile(newpath, buffer, "binary", () => {
                                 res.end();
-                                this.sendOutput('File written to ' + newpath);
+                                this.sendOutput(`File written to ${newpath}`);
                             });
                         });
                     });
@@ -55,7 +55,7 @@ class websocketServer {
                     this.sendOutput('File upload command recieved, server is ready');
                     socket.send('/expt ' + filepath);
                 }
-                else this.sendOutput('\r>><<  ' + message.toString());
+                else this.sendOutput(message.toString(), true);
             });
 
             socket.on('close', socket => {
@@ -63,28 +63,35 @@ class websocketServer {
                 let index = names.indexOf(this.name);
                 names.splice(index, 1);
                 servers.splice(index, 1);
-                if (selecting || servers.length == 0) select();
+                this.active = false;
+                if (selecting || servers.length == 0) select(this);
             });
 
             rl.on('line', (line) => {
+                if (!this.active) return;
+                process.stdout.write('<<>>  ');
                 line = line.replace('<<>>', '').replace('>><<', '');
-                if (line.trim() && this.active) {
+                if (line.trim()) {
                     this.messageLog.push(line.trim());
+                    if (this.messageLog.length == 1) return;
                     switch (line.substring(0, 5)) {
                         case '/file':
-                            var seperated = line.substring(6).replaceAll('\'', '\"').split('\"');
-                            var files = {};
-                            for (let x = 0; x < seperated.length; x++) {
-                                if (seperated[x].trim() != '') {
-                                    let filename = seperated[x].replaceAll('\\', '/').split('/').pop();
-                                    files[filename] = seperated[x];
-                                    app.get('/download/' + this.port + '/' + httpEncode(filename), (req, res) => {
-                                        res.download(files[filename]);
-                                        this.sendOutput('file sent ', filename);
-                                    });
-                                    socket.send('/file ' + filename);
+                            if (fs.existsSync(line.substring(6).replaceAll('"', '').trim())) {
+                                var seperated = line.substring(6).replaceAll('\'', '\"').split('\"');
+                                var files = {};
+                                for (let x = 0; x < seperated.length; x++) {
+                                    if (seperated[x].trim() != '') {
+                                        let filename = seperated[x].replaceAll('\\', '/').split('/').pop();
+                                        files[filename] = seperated[x];
+                                        app.get('/download/' + this.port + '/' + httpEncode(filename), (req, res) => {
+                                            res.download(files[filename]);
+                                            this.sendOutput('File sent');
+                                        });
+                                        socket.send('/file ' + filename);
+                                    }
                                 }
                             }
+                            else this.sendOutput('Directory is invalid');
                             break;
                         case '/dldr':
                             if (fs.existsSync(line.substring(6).replaceAll('"', '').trim())) {
@@ -94,7 +101,7 @@ class websocketServer {
                                     }
                                     else {
                                         this.directory = line.substring(6).replaceAll('"', '').trim();
-                                        this.sendOutput(`Download directory changed to "${this.directory}"`);
+                                        this.sendOutput(`Download directory changed to "${this.directory}`);
                                     }
                                 });
                             }
@@ -116,20 +123,22 @@ class websocketServer {
                             socket.send(line);
                             break;
                     }
-                    process.stdout.write('<<>>  ');
                 }
             });
         });
     }
     activate() {
         console.clear();
-        for (var x = 0; x < this.messageLog.length; x++) console.log(this.messageLog[x]);
+        for (var x = 0; x < this.messageLog.length; x++) {
+            console.log(this.messageLog[x]);
+        }
         this.active = true;
         selecting = false;
     }
-    sendOutput(input) {
+    sendOutput(input, msg=false) {
         if (this.active) {
-            console.log(input);
+            if (msg) console.log('\r>><<  ' + input);
+            else console.log('\r' + input);
             process.stdout.write('<<>>  ');
             this.messageLog.push(input);
         }
@@ -138,7 +147,11 @@ class websocketServer {
 
 var selecting;
 
-function select() {
+function select(to_delete) {
+    if (to_delete) {
+        socket_ports.push(to_delete.port);
+        delete to_delete;
+    }
     console.clear();
     selecting = true;
     
@@ -151,8 +164,8 @@ function select() {
     }
     console.log('------------------------------\nChoose a client to connect to: ');
     rl.prompt();
-    
-    rl.on('line', function handler(line) {
+
+    rl.on('line', (line) => {
         if (!selecting) return;
         if (line > 0 && line <= names.length) {
             servers[line - 1].activate();

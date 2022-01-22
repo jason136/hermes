@@ -1,12 +1,13 @@
 extern crate websocket;
 extern crate reqwest;
 
-use std::io::stdin;
+use std::io::{stdin, stdout};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::{fs, path};
 use std::io::prelude::*;
+use std::collections::HashMap;
 
 use websocket::client::ClientBuilder;
 use websocket::{Message, OwnedMessage};
@@ -62,10 +63,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	enum FilePath {
 		Download(String),
-		Upload(String)
+		Upload(String), 
+		KeyVal(String, String)
 	}
 
 	let (td, rd): (Sender<FilePath>, Receiver<FilePath>) = mpsc::channel();
+	let td_1 = td.clone();
 
 	let arc = Arc::new(Mutex::new(String::from("./downloads/")));
 
@@ -78,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let message = match rx.recv() {
 					Ok(m) => m,
 					Err(e) => {
-						println!("Send Loop: {:?}", e);
+						println!("error on rx recieve: {:?}", e);
 						return;
 					}
 				};
@@ -94,23 +97,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						let text = String::from(&text);
 						match &text[0..5] {
 							"/file" => {
-								for filename in text[6..].split("\"") {
-									if filename.trim() != "" {
+								for filepath in text[6..].split("\"") {
+									if filepath.trim() != "" {
+										let filepath = filepath.replace("\\", "/");
+										let filename = filepath.split("/").last().unwrap();
 										sender.send_message(&OwnedMessage::Text(format!("/file {}", filename))).expect("the bad");
+										td_1.send(FilePath::KeyVal(filename.to_string(), filepath.to_string())).unwrap();
 									}
 								}
 								continue;
-								// let filepath = String::from(&text[6..]);
-								// let filename = String::from(filepath.split("/").last().unwrap());
 							}
 							"/dldr" => {
-								if path::Path::new(&text[6..].replace("\"", "").trim()).exists() && std::fs::metadata(".").unwrap().is_dir() {
+								if path::Path::new(&text[6..].replace("\"", "").trim()).exists() && fs::metadata(".").unwrap().is_dir() {
 									let mut new_direc = arc.lock().unwrap();
 									*new_direc = String::from(text[6..].replace("\"", "").trim());
-									println!("Download directory changed to {:?}", new_direc);
+									print!("\r\nDownload directory changed to {:?}\n<<>>  ", new_direc);
+									stdout().flush().unwrap();
 								}
 								else {
-									println!("Directory is invalid");
+									print!("\r\nDirectory is invalid\n<<>>  ");
+									stdout().flush().unwrap();
 								}
 								continue;
 							}
@@ -137,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let message = match message {
 				Ok(m) => m,
 				Err(_) => {
-					println!("Server disconnected");
+					println!("\rServer disconnected");
 					let _ = tx_1.send(OwnedMessage::Close(None));
 					return;
 				}
@@ -147,7 +153,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					if text.len() > 6 {
 						match &text[0..5] {
 							"/file" => {
-								println!("File download command recieved");
+								print!("\r\nFile download command recieved\n<<>>  ");
+								stdout().flush().unwrap();
 								let file = FilePath::Download(String::from(&text[6..]));
 								let _ = td.send(file);
 							}
@@ -155,15 +162,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								let file = FilePath::Upload(String::from(&text[6..]));
 								let _ = td.send(file);
 							}
-							_ => println!(">><<  {}", text),
+							_ => {
+								print!("\r>><<  {}\n<<>>  ", text);
+								stdout().flush().unwrap();
+							}
 						}
 					}
 					else {
-						println!(">><<  {}", text);
+						print!("\r>><<  {}\n<<>>  ", text);
+						stdout().flush().unwrap();
 					}
 				}
 				OwnedMessage::Close(_) => tx_1.send(OwnedMessage::Close(None)).expect("Error on reciprocate shutdown"),
-				_ => println!("Unrecognized message recieved, {:?}", message),
+				_ => {
+					print!("\r\nUnrecognized message recieved, {:?}\n<<>>  ", message);
+					stdout().flush().unwrap();
+				}
 			}
 		}
 	});
@@ -171,12 +185,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	threads.push(receive_loop);
 
 	let transfer_loop = thread::spawn(move || {
+		let mut filepaths = HashMap::new();
 		loop {
 			let message = match rd.recv() {
 				Ok(m) => m,
 				Err(_) => return
 			};
 			match message {
+				FilePath::KeyVal(key, value) => {
+					filepaths.insert(key, value);
+				}
 				FilePath::Download(filename) => {
 					let new_direc = arc.lock().unwrap();
 					if *new_direc == "./downloads/" {
@@ -204,7 +222,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						Err(e) => println!("Error on file write {:?}: {:?}", display, e)
 					}
 				}
-				FilePath::Upload(filepath) => {
+				FilePath::Upload(filename) => {
+					println!("{:?}", &filename);
+					let filepath = &filepaths[&filename];
 					let mut file = match fs::File::open(&filepath) {
 						Ok(f) => f,
 						Err(e) => {
@@ -213,13 +233,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						}
 					};
 					let mut buffer = Vec::new();
-					file.read_to_end(&mut buffer).expect("error writing to buffer");
+					file.read_to_end(&mut buffer).expect("error writing to image buffer");
 					
-					let filename = filepath.split("/").last().unwrap();
 					let client = reqwest::blocking::Client::new();
 					match client.post(&format!("http://{}:3000/upload/{}/{}", &ip, &port, &http_encode(String::from(filename)))).body(buffer).send() {
-						Ok(_) => println!("File uploaded: {:?}", &filepath),
-						Err(e) => println!("Error uploading file: {:?} {:?}", &filepath, e)
+						Ok(_) => {
+							print!("\rFile uploaded: {:?}\n<<>>  ", &filepath);
+							stdout().flush().unwrap();
+						}
+						Err(e) => {
+							print!("\r\nError uploading file: {:?} {:?}\n<<>>  ", &filepath, e);
+							stdout().flush().unwrap();
+						}
 					}
 				}
 			}
@@ -231,6 +256,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let main_loop = thread::spawn(move || {
 		loop {
 			print!("<<>>  ");
+			stdout().flush().unwrap();
 			let mut input = String::new();
 			stdin().read_line(&mut input).unwrap();
 			let trimmed = input.trim();
@@ -239,7 +265,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 			match trimmed {
 				"/close" => {
-					println!("Closing connection");
+					println!("\rClosing connection");
+					stdout().flush().unwrap();
 					tx.send(OwnedMessage::Close(None)).expect("Error on shutdown command");
 					return;
 				}

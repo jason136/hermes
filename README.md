@@ -1,4 +1,4 @@
-# Synopsis
+# Hermes
 Hermes is a websocket and http protocol powered messaging and file transfer app. It is split into an app each for the client and the server. 
 Both the client and the server are used through console windows, as of now there is no fancy gui.
 An instance of the server can support multiple connections to various clients. A client, however, can only be connected to one server at a time. \
@@ -9,7 +9,7 @@ The [client side app](src/main.rs) is written in rust and must be compiled into 
 # How to
 Most content typed into the console window both apps create will be automatically sent to the corresponding destination; 
 however, some commands (prefixed by '/') will carry out commands instead and will not be sent. \
-This is to say if you're trying to send the message "/file hello foo", the message will not be sent and an error may be shown. 
+This is to say if you're trying to send the message "/file hello world", the message will not be sent and an error may be shown. 
 ## Server
 To get started, run the [server.js](server.js) script with Node.js and allow it to listen for http requests on a predefined port (the default is port 3000). \
 In addition to this port, the app needs to be allowed to bind to other ports for websocket connections to be established (the default is ports 8080, 8081, 8082). \
