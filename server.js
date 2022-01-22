@@ -1,5 +1,4 @@
-const Express = require('express');
-const app = Express();
+const app = require('express')();
 
 const fs = require('fs')
 const WebSocket = require('ws');
@@ -56,7 +55,7 @@ class websocketServer {
                     this.sendOutput('File upload command recieved, server is ready');
                     socket.send('/expt ' + filepath);
                 }
-                else this.sendOutput('Message Recieved: ' + message.toString());
+                else this.sendOutput('\r>><<  ' + message.toString());
             });
 
             socket.on('close', socket => {
@@ -68,7 +67,9 @@ class websocketServer {
             });
 
             rl.on('line', (line) => {
+                line = line.replace('<<>>', '').replace('>><<', '');
                 if (line.trim() && this.active) {
+                    this.messageLog.push(line.trim());
                     switch (line.substring(0, 5)) {
                         case '/file':
                             var seperated = line.substring(6).replaceAll('\'', '\"').split('\"');
@@ -115,6 +116,7 @@ class websocketServer {
                             socket.send(line);
                             break;
                     }
+                    process.stdout.write('<<>>  ');
                 }
             });
         });
@@ -122,12 +124,15 @@ class websocketServer {
     activate() {
         console.clear();
         for (var x = 0; x < this.messageLog.length; x++) console.log(this.messageLog[x]);
-        this.messageLog = [];
         this.active = true;
+        selecting = false;
     }
     sendOutput(input) {
-        if (this.active) console.log(input);
-        else this.messageLog.push(input);
+        if (this.active) {
+            console.log(input);
+            process.stdout.write('<<>>  ');
+            this.messageLog.push(input);
+        }
     }
 }
 
@@ -137,8 +142,8 @@ function select() {
     console.clear();
     selecting = true;
     
-    console.log('Listening on port 3000');
-    console.log(`Ports available for websockets: ${ports}\n`);
+    console.log(`Listening on port ${http_port}`);
+    console.log(`Ports available for websockets: ${socket_ports}\n`);
     if (names.length == 0) return;
     console.log('Connected clients:\n------------------------------');
     for (var x = 0; x < names.length; x++) {
@@ -151,7 +156,6 @@ function select() {
         if (!selecting) return;
         if (line > 0 && line <= names.length) {
             servers[line - 1].activate();
-            selecting = false;
             return;
         }
         else select();
@@ -159,7 +163,7 @@ function select() {
 }
 
 app.get('/checkin', (req, res) => {
-    let port = ports.shift();
+    let port = socket_ports.shift();
     if (port) {
         names.push('client on ' + port);
         res.send('server online ' + port);
@@ -168,6 +172,11 @@ app.get('/checkin', (req, res) => {
     else res.send('server online ' + 'full');
 });
 
-var ports = ['8080', '8081', '8082'];
-app.listen(3000);
+// Use the following ports to establish websocket connections
+var socket_ports = ['8080', '8081', '8082'];
+
+// Listen for incoming http request on the following port
+var http_port = 3000;
+
+app.listen(http_port);
 select();

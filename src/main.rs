@@ -3,11 +3,9 @@ extern crate reqwest;
 
 use std::io::stdin;
 use std::sync::mpsc::{Sender, Receiver};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::fs;
-use std::path;
+use std::{fs, path};
 use std::io::prelude::*;
 
 use websocket::client::ClientBuilder;
@@ -44,8 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					continue;
 				}
 			}
-			Err(e) => {
-				println!("Server not found {:?}", e);
+			Err(_) => {
+				println!("Server not found");
 				continue;
 			}
 		};
@@ -130,6 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			}
 		});	
+
 		threads.push(send_loop);
 	};
 
@@ -153,18 +152,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								let _ = td.send(file);
 							}
 							"/expt" => {
-								// let filename = &text[6..];
-								// println!("got from server: {:?}", filename);
-								// let file = FilePath::Upload(String::from(paths.get(filename).unwrap()));
-								// let _ = td.send(file);
 								let file = FilePath::Upload(String::from(&text[6..]));
 								let _ = td.send(file);
 							}
-							_ => println!("Message Recieved: {}", text),
+							_ => println!(">><<  {}", text),
 						}
 					}
 					else {
-						println!("Message Recieved: {}", text);
+						println!(">><<  {}", text);
 					}
 				}
 				OwnedMessage::Close(_) => tx_1.send(OwnedMessage::Close(None)).expect("Error on reciprocate shutdown"),
@@ -172,6 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 	});
+
 	threads.push(receive_loop);
 
 	let transfer_loop = thread::spawn(move || {
@@ -229,10 +225,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 	});
+
 	threads.push(transfer_loop);
 
 	let main_loop = thread::spawn(move || {
 		loop {
+			print!("<<>>  ");
 			let mut input = String::new();
 			stdin().read_line(&mut input).unwrap();
 			let trimmed = input.trim();
@@ -257,6 +255,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 	});
+
 	threads.push(main_loop);
 
 	for thread in threads {
