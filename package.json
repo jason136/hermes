@@ -8,5 +8,9 @@
     "start": "node server.js"
   },
   "author": "Jason Wiemels",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.17.3",
+    "ws": "^8.5.0"
+  }
 }

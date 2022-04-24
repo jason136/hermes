@@ -55,7 +55,7 @@ class websocketServer {
                     this.sendOutput('File upload command recieved, server is ready');
                     socket.send('/expt ' + filepath);
                 }
-                else this.sendOutput(message.toString(), true);
+                else this.sendOutput(`>><<  ${message.toString().trim()}`);
             });
 
             socket.on('close', socket => {
@@ -67,12 +67,12 @@ class websocketServer {
                 if (selecting || servers.length == 0) select(this);
             });
 
-            rl.on('line', (line) => {
+            this.line_read = (line) => {
                 if (!this.active) return;
                 process.stdout.write('<<>>  ');
                 line = line.replace('<<>>', '').replace('>><<', '');
                 if (line.trim()) {
-                    this.messageLog.push(line.trim());
+                    this.messageLog.push(`<<>>  ${line.trim()}`);
                     if (this.messageLog.length == 1) return;
                     switch (line.substring(0, 5)) {
                         case '/file':
@@ -97,7 +97,7 @@ class websocketServer {
                             if (fs.existsSync(line.substring(6).replaceAll('"', '').trim())) {
                                 fs.access(line.substring(6).replaceAll('"', '').trim(), (error) => {
                                     if (error) {
-                                        this.sendOutput('Directory is invalid ', error)
+                                        this.sendOutput('Directory is invalid ')
                                     }
                                     else {
                                         this.directory = line.substring(6).replaceAll('"', '').trim();
@@ -124,7 +124,7 @@ class websocketServer {
                             break;
                     }
                 }
-            });
+            };
         });
     }
     activate() {
@@ -134,14 +134,17 @@ class websocketServer {
         }
         this.active = true;
         selecting = false;
+
+        rl.removeAllListeners();
+        process.stdout.write('<<>>  ');
+        rl.on('line', (line) => { this.line_read(line) });
     }
-    sendOutput(input, msg=false) {
+    sendOutput(input) {
         if (this.active) {
-            if (msg) console.log('\r>><<  ' + input);
-            else console.log('\r' + input);
+            console.log('\r' + input);
             process.stdout.write('<<>>  ');
-            this.messageLog.push(input);
         }
+        this.messageLog.push(input);
     }
 }
 
